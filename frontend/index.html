@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Crunch Calendar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="/src/shared/styles/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">CC</span>
+      <div>
+        <h1>Crunch Calendar</h1>
+        <p class="tag">See the crunch before it hits.</p>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist" hidden>
+      <button class="tab active" data-role="student" role="tab">Student</button>
+      <button class="tab" data-role="host" role="tab">Recruiter / Host</button>
+    </nav>
+    <div class="user" id="user" hidden></div>
+  </header>
+
+  <main id="app"></main>
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
