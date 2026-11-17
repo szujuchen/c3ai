@@ -11,6 +11,17 @@ const { createApp } = await import(`${B}/src/app.js`);
 const { makeDeps } = await import(`${B}/tests/helpers.js`);
 
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms));
+// After an action, wait until the page has stopped changing (requests answered, redraws done) rather than a fixed time.
+async function quiet(d, { max = 6000, still = 4 } = {}) {
+  const root = d.getElementById('app');
+  let last = null, same = 0;
+  for (let waited = 0; waited < max && same < still; waited += 80) {
+    await settle(80);
+    const now = root.innerHTML + d.getElementById('toast').textContent;
+    same = now === last ? same + 1 : 0;
+    last = now;
+  }
+}
 const bundle = fs.readFileSync(new URL('./.build/bundle.js', import.meta.url), 'utf8');
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8').replace(/<link[^>]*>/g, '').replace(/<script[^>]*><\/script>/g, '');
 
@@ -28,13 +39,22 @@ function run(label, fn) {
       w, d, $: (s) => d.querySelector(s), $$: (s) => [...d.querySelectorAll(s)],
       app: () => d.getElementById('app').innerHTML, text: () => d.getElementById('app').textContent,
       toast: () => d.getElementById('toast').textContent,
-      click: async (s) => { const el = typeof s === 'string' ? d.querySelector(s) : s; assert.ok(el, `missing ${s}`); if (el.click) el.click(); else el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await settle(500); },
-      key: async (k) => { d.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true })); await settle(400); },
+      click: async (s) => { const el = typeof s === 'string' ? d.querySelector(s) : s; assert.ok(el, `missing ${s}`); if (el.click) el.click(); else el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await quiet(d); },
+      key: async (k) => { d.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true })); await quiet(d); },
       login: async (role, studentId) => { if (studentId) d.getElementById('login-student').value = studentId; await c.click(`[data-login="${role}"]`); },
     };
     try { await fn(c); } finally { w.close(); server.closeAllConnections(); await new Promise((r) => server.close(r)); }
   });
 }
+
+// Function declarations are hoisted, so tests above where they are defined can use them.
+function fill(c, selector, value) {
+  const el = c.$(selector);
+  assert.ok(el, `missing ${selector}`);
+  el.value = value;
+  el.dispatchEvent(new c.w.Event('input', { bubbles: true }));
+}
+const submitForm = (c) => c.click('.modal button[type="submit"]');
 
 await run('login screen offers three roles, and a bad password-less login works', async (c) => {
   assert.equal(c.$$('[data-login]').length, 3);
@@ -135,8 +155,12 @@ await run('host: only the heatmap view; pin a slot, try a mock event, see the ve
   assert.ok(c.$('.hm-tile.pinned'));
   assert.ok(c.$('#mock-here'));
   await c.click('#mock-here');
+  assert.ok(c.$('#add-mock-form'), 'the form opens for the pinned day');
+  fill(c, '#mock-name', 'Pinned slot test');
+  await submitForm(c);
   assert.match(c.toast(), /Not saved/);
   assert.equal(c.$$('[data-unmock]').length, 1);
+  assert.match(c.$('.mocks').textContent, /Pinned slot test/);
   assert.match(c.$('.mocks').textContent, /Good timing|Busy|Too crowded/);
   await c.click('#try-top');
   assert.equal(c.$$('[data-unmock]').length, 2);
@@ -333,7 +357,7 @@ await run('host 3D: try a mock event, see it on the chart and the verdict, then 
   assert.ok(c.$(`[data-heat-day="${topDay}"] .heat-event, [data-heat-day="${topDay}"] .heat-rank`), 'with a marker');
   await c.click('[data-mode="2d"]');
   assert.equal(c.$$('[data-unmock]').length, 1, 'same mock event in 2D');
-  const to = c.$('#to'); to.value = '2026-12-31'; to.dispatchEvent(new c.w.Event('change', { bubbles: true })); await settle(500); // the default 2D range stops before the pick
+  const to = c.$('#to'); to.value = '2026-12-31'; to.dispatchEvent(new c.w.Event('change', { bubbles: true })); await quiet(c.d); // the default 2D range stops before the pick
   assert.ok(c.$('.hm-mock'), 'marked on the 2D day too');
   await c.click('#clear-mocks');
   await c.click('[data-mode="3d"]');
@@ -347,4 +371,151 @@ await run('host 3D: a host cannot see anyone, and an admin gets the 3D mode too'
   await c.click('[data-mode="3d"]');
   assert.equal(c.$$('[data-heat-day]').length, 31);
   assert.ok(!/Maya|Leo|Aisha/.test(c.text()));
+});
+
+// ---------- Host: add a mock event from a form ----------
+await run('host: a form to add a mock event with a name, date and type', async (c) => {
+  await c.login('host');
+  assert.equal(c.$('#add-mock-form'), null);
+  await c.click('#add-mock');
+  assert.ok(c.$('#add-mock-form'), 'the modal opens');
+  assert.match(c.$('.modal').textContent, /never saved and students never see it/);
+  assert.equal(c.d.activeElement.id, 'mock-name', 'the cursor starts in the name field');
+  assert.equal(c.$('#mock-type').value, 'recruiting', 'defaults to the type you are looking at');
+  assert.equal(c.$('#mock-date').min, '2026-12-01');
+  assert.equal(c.$('#mock-date').max, '2026-12-31');
+  assert.deepEqual([...c.$('#mock-type').options].map((o) => o.value), ['recruiting', 'relax', 'general']);
+
+  await submitForm(c);
+  assert.match(c.$('#mock-error').textContent, /Give the event a name/);
+  assert.ok(c.$('#add-mock-form'), 'stays open to fix it');
+  fill(c, '#mock-name', 'Study break'); fill(c, '#mock-date', '2027-01-01');
+  await submitForm(c);
+  assert.match(c.$('#mock-error').textContent, /Pick a date between 2026-12-01 and 2026-12-31/);
+  assert.equal(c.$('#mock-name').value, 'Study break', 'what you typed is kept');
+  fill(c, '#mock-name', 'x'.repeat(81)); fill(c, '#mock-date', '2026-12-09');
+  await submitForm(c);
+  assert.match(c.$('#mock-error').textContent, /under 80 characters/);
+
+  fill(c, '#mock-name', '  Study break  '); fill(c, '#mock-type', 'relax');
+  await submitForm(c);
+  assert.equal(c.$('#add-mock-form'), null, 'closes once added');
+  assert.match(c.toast(), /Study break.*Not saved/);
+  assert.equal(c.$$('[data-unmock]').length, 1);
+  const row = c.$('.mocks li').textContent;
+  assert.match(row, /Study break/);
+  assert.match(row, /Relax \/ wellness on Wed, Dec 9/);
+  assert.match(row, /Good timing|Busy|Too crowded/);
+  assert.match(c.$('.hm-mock').getAttribute('title'), /Study break/, 'marked on the 2D day with its name');
+});
+
+await run('host: the add form closes without adding, every way', async (c) => {
+  await c.login('host');
+  for (const how of ['x', 'cancel', 'backdrop', 'escape']) {
+    await c.click('#add-mock');
+    assert.ok(c.$('#add-mock-form'), `opens (${how})`);
+    fill(c, '#mock-name', 'Should not be added');
+    if (how === 'x') await c.click('.modal-x');
+    if (how === 'cancel') await c.click('.modal .row [data-add-close]');
+    if (how === 'backdrop') await c.click('.modal-back');
+    if (how === 'escape') await c.key('Escape');
+    assert.equal(c.$('#add-mock-form'), null, `closes with ${how}`);
+    assert.equal(c.$$('[data-unmock]').length, 0, `nothing added (${how})`);
+  }
+  await c.click('#add-mock');
+  assert.equal(c.$('#mock-name').value, '', 'a fresh form each time');
+});
+
+await run('host: the form opens on the pinned day', async (c) => {
+  await c.login('host');
+  await c.click('.hm-tile[data-pin^="2026-12-08|"]');
+  await c.click('#mock-here');
+  assert.equal(c.$('#mock-date').value, '2026-12-08');
+  fill(c, '#mock-name', 'Tuesday talk'); fill(c, '#mock-type', 'general');
+  await submitForm(c);
+  assert.match(c.$('.mocks li').textContent, /Tuesday talk.*General on Tue, Dec 8/);
+});
+
+await run('host 3D: an event added from the form shows by name on its column, and in 2D', async (c) => {
+  await to3d(c);
+  await c.click('#add-mock');
+  fill(c, '#mock-name', 'Career panel'); fill(c, '#mock-date', '2026-12-09'); fill(c, '#mock-type', 'recruiting');
+  await submitForm(c);
+  assert.equal(c.$('#add-mock-form'), null);
+  assert.ok(c.$('.heatmap-3d'), 'stays in 3D');
+  assert.match(c.$('[data-heat-day="2026-12-09"]').getAttribute('aria-label'), /Career panel \(mock\)/);
+  assert.ok(c.$('[data-heat-day="2026-12-09"] .heat-event, [data-heat-day="2026-12-09"] .heat-rank'), 'marked on the column');
+  await c.click('[data-heat-day="2026-12-09"]');
+  assert.match(c.$('#heat-detail').textContent, /Career panel \(mock\)/);
+  assert.match(c.$('.mocks').textContent, /Career panel/);
+  await c.click('[data-mode="2d"]');
+  assert.match(c.$('.mocks').textContent, /Career panel/, 'carried over to 2D');
+  await c.click('[data-unmock="0"]');
+  assert.equal(c.$$('[data-unmock]').length, 0);
+});
+
+await run('a student has no way to add events', async (c) => {
+  await c.login('student', 's1');
+  assert.equal(c.$('#add-mock'), null);
+  const token = JSON.parse(c.w.sessionStorage.getItem('crunch-calendar-session')).token;
+  const r = await fetch('http://localhost:3111/api/preview/crowding', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Connection: 'close' }, body: JSON.stringify({ mockEvents: [{ type: 'relax', date: '2026-12-09', name: 'x' }] }) });
+  assert.equal(r.status, 403);
+});
+
+// ---------- Host: mock events have a time slot ----------
+await run('host: the form has the same 2-hour time slots as the heatmap, 6 to 8 PM by default', async (c) => {
+  await c.login('host');
+  await c.click('#add-mock');
+  const slots = [...c.$('#mock-slot').options];
+  assert.deepEqual(slots.map((o) => o.value), ['8', '10', '12', '14', '16', '18', '20']);
+  assert.deepEqual(slots.map((o) => o.textContent), ['8–10 AM', '10 AM–12 PM', '12–2 PM', '2–4 PM', '4–6 PM', '6–8 PM', '8–10 PM']);
+  assert.equal(c.$('#mock-slot').value, '18');
+  assert.match(c.$('label[for="mock-slot"]').textContent, /Time slot/);
+});
+
+await run('host: pinning a slot pre-fills the form with its day and time, and the tile shows the mock event', async (c) => {
+  await c.login('host');
+  await c.click('.hm-tile[data-pin="2026-12-08|10"]');
+  await c.click('#mock-here');
+  assert.equal(c.$('#mock-date').value, '2026-12-08');
+  assert.equal(c.$('#mock-slot').value, '10');
+  fill(c, '#mock-name', 'Morning talk'); fill(c, '#mock-type', 'general');
+  await submitForm(c);
+  assert.match(c.$('.mocks li').textContent, /Morning talk.*General on Tue, Dec 8, 10 AM–12 PM/);
+  assert.match(c.toast(), /10 AM–12 PM.*Not saved/);
+  assert.ok(c.$('.hm-tile[data-pin="2026-12-08|10"] .tile-mock'), 'marked on its own slot');
+  assert.match(c.$('.hm-tile[data-pin="2026-12-08|10"]').getAttribute('aria-label'), /Mock event here: Morning talk/);
+  assert.equal(c.$('.hm-tile[data-pin="2026-12-08|18"] .tile-mock'), null, 'and not on the evening slot');
+  assert.equal(c.$$('.tile-mock').length, 1);
+});
+
+await run('host: the time slot decides whether it clashes with another event', async (c) => {
+  await c.login('host');
+  const add = async (hour) => {
+    await c.click('#add-mock');
+    fill(c, '#mock-name', `Talk at ${hour}`); fill(c, '#mock-date', '2026-12-03'); fill(c, '#mock-slot', String(hour)); fill(c, '#mock-type', 'general');
+    await submitForm(c);
+  };
+  await add(12); // the career fair runs 12 to 4 PM that day
+  const noon = c.$$('.mocks li')[0].textContent;
+  assert.match(noon, /12–2 PM/);
+  assert.match(noon, /at the same time/);
+  assert.match(noon, /Busy|Too crowded/);
+  await add(18);
+  const evening = c.$$('.mocks li')[1].textContent;
+  assert.match(evening, /6–8 PM/);
+  assert.ok(!/at the same time/.test(evening), 'nothing else is on at 6 PM');
+  assert.match(evening, /2 other events that day/, 'the career fair and your own noon mock event');
+});
+
+await run('host 3D: a mock event shows at its chosen time on the day', async (c) => {
+  await to3d(c);
+  await c.click('#add-mock');
+  fill(c, '#mock-name', 'Career panel'); fill(c, '#mock-date', '2026-12-09'); fill(c, '#mock-slot', '10');
+  await submitForm(c);
+  await c.click('[data-heat-day="2026-12-09"]');
+  assert.match(c.$('#heat-detail').textContent, /Career panel \(mock\) · 10 AM/);
+  assert.match(c.$('.mocks li').textContent, /10 AM–12 PM/);
+  await c.click('#try-top');
+  assert.match(c.$$('.mocks li')[1].textContent, /6–8 PM/, 'a quick add is the 6 to 8 PM slot');
 });

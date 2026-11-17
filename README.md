@@ -85,7 +85,7 @@ Notes:
 3. The banner shows a **Critical** burnout stretch (Dec 11–15) with fixes. The **Stress level** card shows her peak.
 4. Switch the calendar between **Day**, **Week** and **Month**. In the week view, deadlines sit at their due time and study blocks are placed around her classes.
 5. In **Campus events**, filter by type, then click the Jane Street info session. The details show what it would do to her Dec 12 (over her cap, stress up). **Register** adds it to her calendar.
-6. **Log out and log in as a host.** The heatmap shows when campus is free. Pin a slot and **Try a mock event on this day**: it says whether that day would be too crowded. Nothing is saved, and the student never sees it.
+6. **Log out and log in as a host.** The heatmap shows when campus is free, in 2D time slots or a 3D month. Click **Add a mock event** (or pin a slot first), then set the event's name, date and type: it says whether that day would be too crowded. Nothing is saved, and the student never sees it.
 7. **Log in as an admin.** The month calendar shows each day's heat in two colors: coursework and events.
 
 ## Missing exam dates
@@ -159,7 +159,7 @@ All JSON, under `/api`. Everything except `/health` and `/auth/*` needs `Authori
 | `GET /availability?audience=&from=&to=` | host, admin | Availability and expected turnout per day and 2-hour slot, average, best slot, top 10. `audience` is `all`, `major:CS`, `year:3` or `course:101` |
 | `GET /intensity?audience=` | host, admin | Campus stress per day (0–100) and student count |
 | `POST /event-fit` `{ type, audience, mockEvents }` | host, admin | Powers the 3D month: for every day, an event fit 0 to 100 (or why the day can't be used), the campus workload, and the top three dates by fit |
-| `POST /recommend-date` `{ type, audience, mockEvents }` | host, admin | Best dates for `recruiting`, `relax` or `general`. Mock events count as clashes |
+| `POST /recommend-date` `{ type, audience, mockEvents }` | host, admin | Best dates for `recruiting`, `relax` or `general`. Mock events (`{ type, date, name? }`, up to 20) count as clashes |
 | `POST /preview/crowding` `{ audience, mockEvents }` | host, admin | For each mock event: heat that day, what else is on, and `good` / `busy` / `too-crowded` |
 
 Registrations, syllabus exams and sessions are kept in memory: a server restart clears them.

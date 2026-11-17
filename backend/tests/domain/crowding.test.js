@@ -20,6 +20,12 @@ describe('would a mock event be too crowded?', () => {
     assert.equal(v('relax', 95), 'good');
     assert.equal(v('relax', 95, 3), 'too-crowded');
   });
+  it('another event at the same time makes it busy, and two make it too crowded, whatever the heat', () => {
+    assert.deepEqual([0, 1, 2].map((o) => crowdingVerdict({ type: 'recruiting', intensity: 10, sameDayEvents: 1, clashes: 0, overlapping: o }).verdict), ['good', 'busy', 'too-crowded']);
+    assert.equal(crowdingVerdict({ type: 'relax', intensity: 95, sameDayEvents: 1, clashes: 0, overlapping: 1 }).verdict, 'busy');
+    assert.match(crowdingVerdict({ type: 'general', intensity: 10, sameDayEvents: 2, clashes: 0, overlapping: 2 }).reason, /2 other events at the same time/);
+  });
+
   it('explains itself', () => {
     assert.match(crowdingVerdict({ type: 'recruiting', intensity: 80, sameDayEvents: 2, clashes: 1 }).reason, /80\/100.*2 other events.*1 of the same type/);
     assert.match(crowdingVerdict({ type: 'recruiting', intensity: 10, sameDayEvents: 0, clashes: 0 }).reason, /quiet day/);
@@ -35,6 +41,22 @@ describe('would a mock event be too crowded?', () => {
     assert.equal(events[0].intensity, intensity['2026-12-03']);
     assert.equal(events[0].verdict, 'busy');
     assert.equal(events[2].type, 'relax');
+  });
+
+  it('judges a mock event against what is on at its own time, not just that day', () => {
+    const deps = makeDeps('base'); // the career fair runs 12 to 4 PM on Dec 3
+    const at = (startHour) => previewCrowding(deps, { audience: 'all', mockEvents: [{ type: 'general', date: '2026-12-03', startHour }] }).events[0];
+    assert.deepEqual([at(12).overlapping, at(14).overlapping, at(16).overlapping, at(18).overlapping], [1, 1, 0, 0]);
+    assert.equal(at(12).sameDayEvents, 1);
+    assert.equal(at(12).verdict, 'busy');
+    assert.match(at(12).reason, /1 other event at the same time/);
+    assert.equal(at(18).verdict, 'good');
+    assert.equal(at(18).sameDayEvents, 1, 'still on the same day');
+  });
+
+  it('two mock events in the same slot overlap each other', () => {
+    const e = previewCrowding(makeDeps('base'), { mockEvents: [{ type: 'general', date: '2026-12-22', startHour: 18 }, { type: 'recruiting', date: '2026-12-22', startHour: 18 }, { type: 'relax', date: '2026-12-22', startHour: 10 }] }).events; // Dec 22 has nothing else on
+    assert.deepEqual(e.map((x) => x.overlapping), [1, 1, 0]); // each of the two sees the other; the 10 AM one overlaps nothing
   });
 
   it('with no mock events there is nothing to judge, but the heat is still returned', () => {

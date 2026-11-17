@@ -5,7 +5,8 @@ export const hostState = {
   from: null,
   to: null,
   hostType: 'recruiting',
-  mocks: [],          // [{ type, date }]
+  mocks: [],          // [{ type, date, name?, startHour }] : startHour is the start of a 2-hour slot, 8 to 20
+  adding: null,       // the add-a-mock-event form: { name, date, startHour, type, error } while open
   pinned: null,       // "2026-12-10|18" : a day and the start hour of a slot
   mode: '2d',         // '2d' hour-by-hour slots, or '3d' month of columns
   metric: 'fit',      // 3D: 'fit' (how well a day suits the event) or 'workload' (campus stress)

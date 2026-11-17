@@ -1,6 +1,11 @@
 import { dayOfMonth, fmt, short } from '../../../shared/utils/dates.js';
+import { esc } from '../../../shared/utils/html.js';
 
 export const TYPE_LABEL = { recruiting: 'Recruiting', relax: 'Relax / wellness', general: 'General' };
+
+// The 2-hour slots a mock event can fill: the same ones the heatmap shows. Quick adds default to 6 to 8 PM.
+export const SLOT_START_HOURS = [8, 10, 12, 14, 16, 18, 20];
+export const DEFAULT_START_HOUR = 18;
 
 const hour = (h) => `${((h + 11) % 12) + 1}`;
 const ampm = (h) => (h < 12 || h === 24 ? 'AM' : 'PM');
@@ -27,12 +32,14 @@ export function renderHeatmap(availability, { pinned, mocks, termEnd }) {
     const tiles = d.slots.map((s) => {
       const key = `${d.date}|${s.startHour}`;
       const label = `${fmt(d.date)}, ${slotLabel(s.startHour, s.endHour)}: ${s.availability}% available, ${turnoutText(s.turnout)} expected`;
-      return `<button class="hm-tile b${band(s.availability)} ${pinned === key ? 'pinned' : ''}" data-pin="${key}" title="${label}" aria-label="${label}" aria-pressed="${pinned === key}">
-          <b>${s.availability}%</b><span>${turnoutText(s.turnout)}</span></button>`;
+      const here = mocked.filter((m) => (m.startHour ?? DEFAULT_START_HOUR) === s.startHour);
+      const full = here.length ? `${label}. Mock event here: ${here.map((m) => m.name || TYPE_LABEL[m.type]).join(', ')}` : label;
+      return `<button class="hm-tile b${band(s.availability)} ${pinned === key ? 'pinned' : ''} ${here.length ? 'has-mock' : ''}" data-pin="${key}" title="${esc(full)}" aria-label="${esc(full)}" aria-pressed="${pinned === key}">
+          <b>${s.availability}%</b><span>${turnoutText(s.turnout)}</span>${here.length ? '<i class="tile-mock"></i>' : ''}</button>`;
     }).join('');
     return `<div class="hm-row ${d.afterFinals ? 'break' : ''}">
         <div class="hm-day"><span class="hm-wd">${fmt(d.date).slice(0, 3)}</span><span class="hm-num ${isWeekend(d.date) ? 'weekend' : ''}">${dayOfMonth(d.date)}</span>
-          <span class="hm-mo">${showMonth ? month : ''}</span>${mocked.length ? `<i class="hm-mock" title="${mocked.length} mock event${mocked.length > 1 ? 's' : ''}"></i>` : ''}</div>
+          <span class="hm-mo">${showMonth ? month : ''}</span>${mocked.length ? `<i class="hm-mock" title="Mock: ${esc(mocked.map((m) => m.name || TYPE_LABEL[m.type]).join(', '))}"></i>` : ''}</div>
         ${tiles}
         <div class="hm-stress" style="background:${stressColor(d.stress)}" title="Campus stress ${d.stress} of 100">${d.stress}</div></div>`;
   }).join('');

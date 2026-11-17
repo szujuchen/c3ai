@@ -3,8 +3,9 @@ import { toast } from '../../shared/components/toast.js';
 import { addDays, fmt } from '../../shared/utils/dates.js';
 import { esc } from '../../shared/utils/html.js';
 import { getAvailability, getEventFit, previewCrowding, recommendDate } from './api/hostApi.js';
-import { renderHeatmap, renderTopSlots, slotLabel, TYPE_LABEL } from './components/heatmap.js';
+import { DEFAULT_START_HOUR, renderHeatmap, renderTopSlots, slotLabel, TYPE_LABEL } from './components/heatmap.js';
 import { bindHeatmap3d, colorsFor, HOST_THEMES, renderFitPicks, renderHeatDetail, renderHeatmap3d } from './components/heatmap3d.js';
+import { renderAddMockModal, readMockForm } from './components/addMockModal.js';
 import { renderMocks, renderPicks } from './components/mockEvents.js';
 import { hostState as state } from './state.js';
 
@@ -23,7 +24,7 @@ function audienceOptions(a, kind) {
 export async function load(ctx) {
   const { term } = ctx;
   if (state.audience === null) state.audience = audienceOptions(ctx.audiences, state.kind)[0].value;
-  const mockEvents = state.mocks.map(({ type, date }) => ({ type, date }));
+  const mockEvents = state.mocks.map(({ type, date, name, startHour }) => ({ type, date, name, startHour }));
   const verdictsFor = () => (mockEvents.length ? previewCrowding(state.audience, mockEvents) : { events: [] });
 
   if (state.mode === '3d') {
@@ -80,7 +81,7 @@ function render2d($app, data, { ctx, refresh, redraw }) {
   const { selected, html: controlsHtml } = controls(ctx, true);
   if (data.warning) {
     $app.innerHTML = `${header()}${controlsHtml}<p class="warn-line" role="alert">${esc(data.warning)}</p>`;
-    bindShared($app, { refresh, redraw });
+    bindShared($app, { ctx, refresh, redraw });
     return;
   }
   const { availability: a, picks, verdicts } = data;
@@ -100,19 +101,18 @@ function render2d($app, data, { ctx, refresh, redraw }) {
         <p class="sub">Each tile has two numbers. The big percentage is the share of the audience that is free in that slot (10% means 1 in 10 are free). The small ~N is the number of people expected to show up to an optional event, which is why it can be below 1 for a small audience (~0.1 means roughly a 1 in 10 chance that one person comes). Click a tile to pin it.</p>
         ${renderHeatmap(a, { pinned: state.pinned, mocks: state.mocks, termEnd: term.end })}
         ${pinnedSlot ? `<div class="pinbar"><span><b>${fmt(pinnedDate)}, ${slotLabel(pinnedSlot.startHour, pinnedSlot.endHour)}</b>: ${pinnedSlot.availability}% available, about ${pinnedSlot.turnout} expected.</span>
-          <span class="row"><select id="pin-type">${Object.entries(TYPE_LABEL).map(([t, l]) => `<option value="${t}" ${t === state.hostType ? 'selected' : ''}>${l}</option>`).join('')}</select>
-          <button class="btn primary" id="mock-here">Try a mock event on this day</button></span></div>` : ''}</div>
+          <button class="btn primary" id="mock-here">Add a mock event on this day</button></div>` : ''}</div>
       <div class="stack"><div class="card"><h2>Top time slots</h2><p class="sub">Ranked by expected turnout.</p>${renderTopSlots(a.top, state.pinned)}</div></div>
     </div>
     <div class="grid-2">
       <div class="card"><h2>Best dates for an event</h2>${renderPicks(picks, state.hostType)}</div>
       <div class="card"><h2>Your mock events</h2><p class="sub">A what-if. Nothing here is added to the real calendar.</p>${renderMocks(state.mocks, verdicts)}</div>
-    </div>`;
-  bindShared($app, { refresh, redraw });
+    </div>${renderAddMockModal(state.adding, term)}`;
+  bindShared($app, { ctx, refresh, redraw });
   $app.querySelectorAll('[data-pin]').forEach((b) => (b.onclick = () => { state.pinned = state.pinned === b.dataset.pin ? null : b.dataset.pin; redraw(); }));
   $app.querySelectorAll('[data-type]').forEach((b) => (b.onclick = () => { state.hostType = b.dataset.type; refresh(); }));
   const here = document.getElementById('mock-here');
-  if (here) here.onclick = () => addMock(document.getElementById('pin-type').value, pinnedDate, refresh);
+  if (here) here.onclick = () => openAddForm({ date: pinnedDate, startHour: Number(state.pinned.split('|')[1]), redraw });
   document.getElementById('try-top').onclick = () => addMock(state.hostType, picks[0].date, refresh);
 }
 
@@ -127,7 +127,7 @@ function render3d($app, data, { ctx, refresh, redraw, animate }) {
   if (!keys.includes(state.day)) state.day = fit.picks[0]?.date ?? keys[0];
   // Hosts see campus events and their own mock events, never anyone's personal calendar.
   const eventsByDay = {};
-  const mockAsEvents = state.mocks.map((m) => ({ summary: `${TYPE_LABEL[m.type]} event (mock)`, start: { dateTime: `${m.date}T18:00:00-05:00` } }));
+  const mockAsEvents = state.mocks.map((m) => ({ summary: `${m.name || `${TYPE_LABEL[m.type]} event`} (mock)`, start: { dateTime: `${m.date}T${String(m.startHour ?? DEFAULT_START_HOUR).padStart(2, '0')}:00:00-05:00` } }));
   for (const e of [...campus, ...mockAsEvents]) (eventsByDay[e.start.dateTime.slice(0, 10)] ??= []).push(e);
 
   const isFit = state.metric === 'fit';
@@ -160,9 +160,9 @@ function render3d($app, data, { ctx, refresh, redraw, animate }) {
           <div class="card"><h2>Best dates for a ${TYPE_LABEL[state.hostType].toLowerCase()} event</h2>${renderFitPicks(fit.picks, state.hostType, TYPE_LABEL[state.hostType])}</div>
           <div class="card"><h2>Your mock events</h2><p class="sub">A what-if. Nothing here is added to the real calendar.</p>${renderMocks(state.mocks, verdicts)}</div>
         </div>
-      </div></div>`;
+      </div></div>${renderAddMockModal(state.adding, term)}`;
 
-  bindShared($app, { refresh, redraw });
+  bindShared($app, { ctx, refresh, redraw });
   bindHeatmap3d({
     chart: document.getElementById('heat-chart'),
     detail: document.getElementById('heat-detail'),
@@ -191,15 +191,38 @@ function render3d($app, data, { ctx, refresh, redraw, animate }) {
   if (top && fit.picks.length) top.onclick = () => addMock(state.hostType, fit.picks[0].date, refresh);
 }
 
+function openAddForm({ date, startHour = DEFAULT_START_HOUR, redraw }) {
+  state.adding = { name: '', date, startHour, type: state.hostType, error: '' };
+  state.focus = '#mock-name';
+  redraw();
+}
+
 function addMock(type, date, refresh) {
   if (state.mocks.length >= 20) { toast('That is plenty of mock events. Remove some first.'); return; }
-  state.mocks.push({ type, date });
-  toast(`Mock ${TYPE_LABEL[type].toLowerCase()} event on ${fmt(date)}. Not saved.`);
+  state.mocks.push({ type, date, startHour: DEFAULT_START_HOUR });
+  toast(`Mock ${TYPE_LABEL[type].toLowerCase()} event on ${fmt(date)}, ${slotLabel(DEFAULT_START_HOUR, DEFAULT_START_HOUR + 2)}. Not saved.`);
   refresh();
 }
 
 // Controls and mock-event buttons are the same in both modes.
-function bindShared($app, { refresh }) {
+function bindShared($app, { ctx, refresh, redraw }) {
+  const add = document.getElementById('add-mock');
+  if (add) add.onclick = () => openAddForm({ date: state.pinned?.split('|')[0] ?? state.day ?? ctx.term.start, startHour: state.pinned ? Number(state.pinned.split('|')[1]) : DEFAULT_START_HOUR, redraw });
+  const closeForm = () => { state.adding = null; redraw(); };
+  $app.querySelectorAll('[data-add-close]').forEach((b) => (b.onclick = closeForm));
+  document.onkeydown = state.adding ? (e) => { if (e.key === 'Escape') closeForm(); } : null;
+  const form = document.getElementById('add-mock-form');
+  if (form) form.onsubmit = (e) => {
+    e.preventDefault();
+    const { event, error } = readMockForm(form, ctx.term);
+    if (error) { document.getElementById('mock-error').textContent = error; return; }
+    if (state.mocks.length >= 20) { document.getElementById('mock-error').textContent = 'That is plenty of mock events. Remove some first.'; return; }
+    state.mocks.push(event);
+    state.adding = null;
+    toast(`Mock ${TYPE_LABEL[event.type].toLowerCase()} event "${event.name}" on ${fmt(event.date)}, ${slotLabel(event.startHour, event.startHour + 2)}. Not saved.`);
+    refresh();
+  };
+
   $app.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => {
     if (state.mode === b.dataset.mode) return;
     state.mode = b.dataset.mode;

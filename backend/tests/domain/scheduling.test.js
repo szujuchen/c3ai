@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { getIntensity } from '../../src/modules/scheduling/application/use-cases/getIntensity.js';
 import { recommendDate } from '../../src/modules/scheduling/application/use-cases/recommendDate.js';
+import { previewCrowding } from '../../src/modules/scheduling/application/use-cases/previewCrowding.js';
 import { createMockEvent } from '../../src/modules/scheduling/domain/entities/mockEvent.js';
 import { bestDates } from '../../src/modules/scheduling/domain/services/bestDateRanker.js';
 import { campusIntensity } from '../../src/modules/scheduling/domain/services/campusIntensity.js';
@@ -91,6 +92,33 @@ describe('scheduling rules', () => {
     deps.registrations.add('s4', 'ce1');
     const after = getIntensity(deps, { audience: 'CS' }).intensity;
     assert.ok(after['2026-12-03'] > base['2026-12-03']);
+  });
+
+  it('a mock event can carry the host\'s own name; blank names fall back to the type', () => {
+    const deps = makeDeps('base');
+    const names = (mockEvents) => previewCrowding(deps, { mockEvents }).events.length;
+    assert.equal(createMockEvent({ id: 'mock-1', type: 'recruiting', date: '2026-12-08', name: 'Jane Street info session' }).summary, 'Jane Street info session (mock)');
+    assert.equal(createMockEvent({ id: 'mock-1', type: 'recruiting', date: '2026-12-08', name: '' }).summary, 'Recruiting event (mock)');
+    assert.equal(names([{ type: 'relax', date: '2026-12-08', name: '  Yoga  ' }, { type: 'relax', date: '2026-12-08', name: '' }]), 2);
+  });
+
+  it('rejects a name that is not text or is too long', () => {
+    const deps = makeDeps('base');
+    const bad = (name) => assert.throws(() => recommendDate(deps, { type: 'relax', mockEvents: [{ type: 'relax', date: '2026-12-08', name }] }), { status: 400 });
+    bad(42);
+    bad({});
+    bad('x'.repeat(81));
+    const badHour = (startHour) => assert.throws(() => recommendDate(deps, { type: 'relax', mockEvents: [{ type: 'relax', date: '2026-12-08', startHour }] }), { status: 400 });
+    for (const h of [7, 9, 11, 22, 24, '10', 10.5, null]) badHour(h);
+    for (const h of [8, 10, 12, 14, 16, 18, 20]) assert.doesNotThrow(() => recommendDate(deps, { type: 'relax', mockEvents: [{ type: 'relax', date: '2026-12-08', startHour: h }] }));
+    assert.doesNotThrow(() => recommendDate(deps, { type: 'relax', mockEvents: [{ type: 'relax', date: '2026-12-08', name: 'x'.repeat(80) }] }));
+  });
+
+  it('a mock event with a time slot fills that 2-hour slot', () => {
+    const m = createMockEvent({ id: 'mock-1', type: 'general', date: '2026-12-09', name: 'Talk', startHour: 10 });
+    assert.deepEqual([m.start.dateTime, m.end.dateTime], ['2026-12-09T10:00:00-05:00', '2026-12-09T12:00:00-05:00']);
+    assert.deepEqual([createMockEvent({ id: 'm', type: 'general', date: '2026-12-09', startHour: 20 }).end.dateTime], ['2026-12-09T22:00:00-05:00']);
+    assert.deepEqual([createMockEvent({ id: 'm', type: 'general', date: '2026-12-09', startHour: 8 }).start.dateTime], ['2026-12-09T08:00:00-05:00']);
   });
 
   it('builds a mock event as a 6:00-7:30 PM calendar event, marked as mock', () => {

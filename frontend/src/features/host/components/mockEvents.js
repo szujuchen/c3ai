@@ -1,6 +1,6 @@
 import { esc } from '../../../shared/utils/html.js';
 import { fmt } from '../../../shared/utils/dates.js';
-import { TYPE_LABEL } from './heatmap.js';
+import { DEFAULT_START_HOUR, slotLabel, TYPE_LABEL } from './heatmap.js';
 
 const VERDICT = { good: 'Good timing', busy: 'Busy', 'too-crowded': 'Too crowded' };
 
@@ -16,11 +16,12 @@ export function renderPicks(picks, hostType) {
 
 // Mock events are for planning only: held in this browser, never saved, never shown to students.
 export function renderMocks(mocks, verdicts) {
-  if (!mocks.length) return '<p class="sub" style="margin-top:12px">No mock events yet. Pin a slot or try the top date to see whether it would be too crowded.</p>';
+  const add = '<button class="btn primary" id="add-mock" style="margin-top:12px">Add a mock event</button>';
+  if (!mocks.length) return `<p class="sub" style="margin-top:12px">No mock events yet. Add one, or pin a slot, to see whether it would be too crowded.</p>${add}`;
   return `<ul class="list mocks">${mocks.map((m, i) => {
     const v = verdicts[i];
-    return `<li><span><b>${TYPE_LABEL[m.type]}</b> on ${fmt(m.date)}
+    return `<li><span><b>${esc(m.name || `${TYPE_LABEL[m.type]} event`)}</b> <span class="mock-meta">${TYPE_LABEL[m.type]} on ${fmt(m.date)}, ${slotLabel(m.startHour ?? DEFAULT_START_HOUR, (m.startHour ?? DEFAULT_START_HOUR) + 2)}</span>
         ${v ? `<span class="verdict ${v.verdict}">${VERDICT[v.verdict]}</span><span class="why">${esc(v.reason)}</span>` : ''}</span>
         <button class="btn" data-unmock="${i}" aria-label="Remove mock event">Remove</button></li>`;
-  }).join('')}</ul><button class="btn" id="clear-mocks" style="margin-top:8px">Clear all mock events</button>`;
+  }).join('')}</ul><div class="row" style="margin-top:8px">${add.replace(' style="margin-top:12px"', '')}<button class="btn" id="clear-mocks">Clear all</button></div>`;
 }
