@@ -22,8 +22,9 @@ Deploy: push to GitHub, then Settings → Pages → Deploy from branch → `main
 2. In **Exam dates missing from Canvas**, click **Upload syllabus** next to 33-141 and pick `samples/33-141_syllabus.txt`. The app finds "Final Exam: Tuesday, December 15, 10:00 AM". Click **Add for the class**: the exam is shared with every enrolled student, and Maya's banner turns red.
 3. The red banner shows a **Critical** burnout stretch (Dec 11–15) with fixes: start the biggest exam early, skip an optional recruiting mixer, go to therapy dogs.
 4. Click a red day on the calendar to see what's due, the study plan, and a tip to move work to a lighter day.
-5. **Recruiter / Host tab.** Recruiting picks dates after finals. Switch to **Relax / wellness**: the top pick is Fri Dec 11, right before the Dec 12–13 peak.
-6. Click **Schedule at #1**. The event is added, and similar events on that day are penalized in the ranking.
+5. In **Upcoming campus events**, the Jane Street info session on Dec 12 is flagged "Heavy day for you", while the pancake study break is a "Recommended break". Click **Register** and it appears on the calendar. Relax events add no workload.
+6. **Recruiter / Host tab.** Recruiting picks dates after finals. Switch to **Relax / wellness**: the top pick is Fri Dec 11, right before the Dec 12–13 peak.
+7. Click **Schedule at #1**. The event is added, and similar events on that day are penalized in the ranking.
 
 ## Files
 

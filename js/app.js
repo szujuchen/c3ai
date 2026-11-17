@@ -18,6 +18,7 @@
     done: {},
     syllabusExams: [],
     pending: {},
+    registered: {},
     hostType: 'recruiting',
     audience: 'all',
     hosted: [],
@@ -35,7 +36,11 @@
   const course = (id) => M.canvasCourses.find((c) => c.id === id);
   const allAssignments = () => M.canvasAssignments.concat(state.syllabusExams);
   const MONTHS_FULL = ['january','february','march','april','may','june','july','august','september','october','november','december'];
-  const allEvents = () => M.gcalEvents.items.concat(state.hosted);
+  const allEvents = () => M.gcalEvents.items.concat(M.campusEvents, state.hosted);
+  const campusFeed = () => M.campusEvents.concat(state.hosted);
+  const regs = (sid) => state.registered[sid] || [];
+  // A student plus the campus events they registered for in the app.
+  const withRegs = (s) => Object.assign({}, s, { event_ids: s.event_ids.concat(regs(s.id)) });
 
   function toast(msg) {
     const t = document.getElementById('toast');
@@ -45,7 +50,7 @@
 
   // ---------- Student ----------
   function studentData() {
-    const st = M.students.find((s) => s.id === state.studentId);
+    const st = withRegs(M.students.find((s) => s.id === state.studentId));
     const assignments = state.canvas ? allAssignments() : [];
     const events = state.gcal ? allEvents() : [];
     const load = S.dailyLoad(st, assignments, events, MONTH_START, MONTH_DAYS);
@@ -105,7 +110,7 @@
             ${renderBars(keys.filter((k) => k <= TERM_END), load, st.daily_cap_h)}
           </div>
         </div>
-        ${renderDayPanel(st, assignments, events, load)}
+        <div class="stack">${renderDayPanel(st, assignments, events, load)}${renderCampusEvents(st, load, alert)}</div>
       </div>`;
     bindStudent();
   }
@@ -128,11 +133,50 @@
     const fixes = [];
     if (biggest) fixes.push(`Start <b>${esc(course(biggest.course_id).course_code)} ${esc(biggest.name)}</b> now. It is the biggest driver (${Math.round(drivers[biggest.id])} h in this stretch).`);
     optional.forEach((e) => fixes.push(`Consider skipping <b>${esc(e.summary)}</b> on ${short(e.start.dateTime.slice(0, 10))} (optional).`));
-    relax.forEach((e) => fixes.push(`Take a break: <b>${esc(e.summary)}</b>, ${fmt(e.start.dateTime.slice(0, 10))} ${time(e.start.dateTime)}.`));
+    relax.slice(0, 2).forEach((e) => fixes.push(`Take a break: <b>${esc(e.summary)}</b>, ${fmt(e.start.dateTime.slice(0, 10))} ${time(e.start.dateTime)}.`));
     return `<div class="card alert" style="margin-top:20px">
       <span class="pill">${alert.level} burnout risk</span><strong>${short(alert.start)} – ${short(alert.end)}: ${alert.days.length} days over your ${st.daily_cap_h} h cap</strong>
       <p class="sub" style="margin-top:6px">Peak day needs about ${alert.peak} h of work.</p>
       <ul>${fixes.map((f) => `<li>${f}</li>`).join('')}</ul></div>`;
+  }
+
+  // ---------- Upcoming campus events ----------
+  function renderCampusEvents(st, load, alert) {
+    const tag = { recruiting: 'Recruiting', relax: 'Relax', general: 'Social' };
+    const rows = campusFeed()
+      .slice()
+      .sort((a, b) => a.start.dateTime.localeCompare(b.start.dateTime))
+      .map((e) => {
+        const d = e.start.dateTime.slice(0, 10);
+        const reg = st.event_ids.includes(e.id);
+        const h = S.eventHours(e);
+        const lv = S.level(load[d] || 0, st.daily_cap_h);
+        const inCrunch = alert && d >= S.addDays(alert.start, -2) && d <= alert.end;
+        let note = '';
+        if (e.host_type === 'relax' && (inCrunch || lv === 2)) note = '<span class="note good">Recommended break</span>';
+        else if (e.host_type !== 'relax' && lv === 2) note = `<span class="note bad">Heavy day for you (${load[d]} h)</span>`;
+        else if (e.host_type !== 'relax' && !reg && (load[d] || 0) + h >= st.daily_cap_h) note = `<span class="note warn">Pushes you over your cap</span>`;
+        return `<li class="evrow">
+          <div><div><span class="etag ${e.host_type}">${tag[e.host_type] || 'Event'}</span><b>${esc(e.summary)}</b></div>
+            <div class="meta">${fmt(d)} · ${time(e.start.dateTime)} · ${h} h${e.location ? ' · ' + esc(e.location) : ''}</div>${note}</div>
+          <button class="btn ${reg ? 'connected' : ''}" data-reg="${e.id}">${reg ? '✓ Registered' : 'Register'}</button></li>`;
+      })
+      .join('');
+    return `<div class="card"><h2>Upcoming campus events</h2>
+      <p class="sub">Registering adds the event to your calendar and workload.</p>
+      <ul class="list" style="margin-top:6px">${rows}</ul></div>`;
+  }
+
+  function bindCampusEvents() {
+    $app.querySelectorAll('[data-reg]').forEach((b) => (b.onclick = () => {
+      const id = b.dataset.reg;
+      const list = (state.registered[state.studentId] = regs(state.studentId).slice());
+      const e = campusFeed().find((x) => x.id === id);
+      const i = list.indexOf(id);
+      if (i >= 0) { list.splice(i, 1); toast(`Unregistered from ${e.summary}`); }
+      else { list.push(id); state.selectedDay = e.start.dateTime.slice(0, 10); toast(`Registered for ${e.summary}`); }
+      render();
+    }));
   }
 
   // ---------- Missing exam dates (syllabus upload) ----------
@@ -276,7 +320,7 @@
       <p class="sub">About ${load[k]} h of work · cap ${st.daily_cap_h} h</p>
       <h3>Due (Canvas)</h3>${due ? `<ul class="list">${due}</ul>` : '<p class="sub">Nothing due.</p>'}
       <h3>Study plan</h3>${work ? `<ul class="list">${work}</ul>` : '<p class="sub">No study blocks planned.</p>'}
-      <h3>Events (Google Calendar)</h3>${evs ? `<ul class="list">${evs}</ul>` : `<p class="sub">${state.gcal ? 'No events.' : 'Connect Google Calendar to see events.'}</p>`}
+      <h3>Events</h3>${evs ? `<ul class="list">${evs}</ul>` : `<p class="sub">${state.gcal ? 'No events.' : 'Connect Google Calendar to see events.'}</p>`}
       ${tip}
     </div>`;
   }
@@ -284,6 +328,7 @@
   function bindStudent() {
     const stNow = M.students.find((s) => s.id === state.studentId);
     bindMissing(stNow);
+    bindCampusEvents();
     document.getElementById('student').onchange = (e) => { state.studentId = e.target.value; state.selectedDay = null; render(); };
     const cv = document.getElementById('c-canvas');
     if (cv && !state.canvas) cv.onclick = () => { state.canvas = true; state.selectedDay = null; toast(`Synced ${M.canvasAssignments.length} assignments from Canvas`); render(); };
@@ -295,7 +340,7 @@
 
   // ---------- Host ----------
   function renderHost() {
-    const audience = M.students.filter((s) => state.audience === 'all' || s.major === state.audience);
+    const audience = M.students.filter((s) => state.audience === 'all' || s.major === state.audience).map(withRegs);
     const intensity = S.campusIntensity(audience, allAssignments(), allEvents(), MONTH_START, MONTH_DAYS);
     const picks = S.bestDates(intensity, state.hostType, { from: MONTH_START, to: TERM_END, hosted: allEvents() });
     const rank = {}; picks.forEach((p, i) => (rank[p.date] = i + 1));

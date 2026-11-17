@@ -324,5 +324,85 @@ window.MOCK = {
         "ev8"
       ]
     }
+  ],
+  "campusEvents": [
+    {
+      "id": "ce1",
+      "summary": "Tech & Engineering Career Fair",
+      "start": {
+        "dateTime": "2026-12-03T12:00:00-05:00"
+      },
+      "end": {
+        "dateTime": "2026-12-03T16:00:00-05:00"
+      },
+      "host_type": "recruiting",
+      "host": "Career Center",
+      "location": "Cohon Center"
+    },
+    {
+      "id": "ce2",
+      "summary": "Hackathon demo night",
+      "start": {
+        "dateTime": "2026-12-02T18:00:00-05:00"
+      },
+      "end": {
+        "dateTime": "2026-12-02T20:00:00-05:00"
+      },
+      "host_type": "general",
+      "host": "ScottyLabs",
+      "location": "Gates 6115"
+    },
+    {
+      "id": "ce3",
+      "summary": "Jane Street info session",
+      "start": {
+        "dateTime": "2026-12-12T18:00:00-05:00"
+      },
+      "end": {
+        "dateTime": "2026-12-12T19:00:00-05:00"
+      },
+      "host_type": "recruiting",
+      "host": "Jane Street",
+      "location": "Tepper 1403"
+    },
+    {
+      "id": "ce4",
+      "summary": "Midnight pancake study break",
+      "start": {
+        "dateTime": "2026-12-13T21:00:00-05:00"
+      },
+      "end": {
+        "dateTime": "2026-12-13T22:00:00-05:00"
+      },
+      "host_type": "relax",
+      "host": "Student Affairs",
+      "location": "Resnik"
+    },
+    {
+      "id": "ce5",
+      "summary": "Yoga for finals",
+      "start": {
+        "dateTime": "2026-12-14T17:30:00-05:00"
+      },
+      "end": {
+        "dateTime": "2026-12-14T18:30:00-05:00"
+      },
+      "host_type": "relax",
+      "host": "Wellness Office",
+      "location": "CUC Studio"
+    },
+    {
+      "id": "ce6",
+      "summary": "Winter formal",
+      "start": {
+        "dateTime": "2026-12-18T20:00:00-05:00"
+      },
+      "end": {
+        "dateTime": "2026-12-18T23:00:00-05:00"
+      },
+      "host_type": "general",
+      "host": "Student Government",
+      "location": "Rangos Ballroom"
+    }
   ]
 };

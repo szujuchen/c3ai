@@ -35,7 +35,8 @@
     const load = {};
     monthKeys(from, days).forEach((k) => {
       const it = dayItems(student, assignments, events, k);
-      load[k] = round1(it.work.reduce((s, w) => s + w.hours, 0) + it.events.reduce((s, e) => s + eventHours(e), 0));
+      // Relax events are breaks, so they add no workload.
+      load[k] = round1(it.work.reduce((s, w) => s + w.hours, 0) + it.events.filter((e) => e.host_type !== 'relax').reduce((s, e) => s + eventHours(e), 0));
     });
     return load;
   }

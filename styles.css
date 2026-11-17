@@ -140,3 +140,13 @@ select, .btn {
 .exam-form { margin-top: 10px; padding: 12px; border-radius: 8px; background: var(--accent-soft); }
 .exam-form input { border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font: inherit; }
 label.btn { display: inline-block; }
+
+/* Campus events */
+.list li.evrow { align-items: center; }
+.etag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-right: 8px; background: #eee; color: #444; }
+.etag.recruiting { background: #e6eefd; color: #2f6fed; }
+.etag.relax { background: #e3f4e9; color: #1f6b3d; }
+.etag.general { background: #f3eafc; color: #7a3db8; }
+.note { display: inline-block; margin-top: 4px; font-size: 12px; font-weight: 600; }
+.note.good { color: #1f6b3d; } .note.bad { color: #c0392b; } .note.warn { color: #a0700a; }
+.evrow .btn { flex: none; }
