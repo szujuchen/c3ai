@@ -18,11 +18,12 @@ Deploy: push to GitHub, then Settings → Pages → Deploy from branch → `main
 
 ## Demo script (2 min)
 
-1. **Student tab.** Pick Maya, click **Connect Canvas**, then **Connect Google Calendar**.
-2. The red banner shows a **Critical** burnout stretch (Dec 11–15) with fixes: start the biggest exam early, skip an optional recruiting mixer, go to therapy dogs.
-3. Click a red day on the calendar to see what's due, the study plan, and a tip to move work to a lighter day.
-4. **Recruiter / Host tab.** Recruiting picks dates after finals. Switch to **Relax / wellness**: the top pick is Fri Dec 11, right before the Dec 12–13 peak.
-5. Click **Schedule at #1**. The event is added, and similar events on that day are penalized in the ranking.
+1. **Student tab.** Pick Maya, click **Connect Canvas**, then **Connect Google Calendar**. She looks "On track", because her Physics final isn't in Canvas.
+2. In **Exam dates missing from Canvas**, click **Upload syllabus** next to 33-141 and pick `samples/33-141_syllabus.txt`. The app finds "Final Exam: Tuesday, December 15, 10:00 AM". Click **Add for the class**: the exam is shared with every enrolled student, and Maya's banner turns red.
+3. The red banner shows a **Critical** burnout stretch (Dec 11–15) with fixes: start the biggest exam early, skip an optional recruiting mixer, go to therapy dogs.
+4. Click a red day on the calendar to see what's due, the study plan, and a tip to move work to a lighter day.
+5. **Recruiter / Host tab.** Recruiting picks dates after finals. Switch to **Relax / wellness**: the top pick is Fri Dec 11, right before the Dec 12–13 peak.
+6. Click **Schedule at #1**. The event is added, and similar events on that day are penalized in the ranking.
 
 ## Files
 
@@ -32,7 +33,12 @@ Deploy: push to GitHub, then Settings → Pages → Deploy from branch → `main
 | `styles.css` | All styling |
 | `js/data.js` | Mock data shaped like the Canvas REST API and Google Calendar API |
 | `js/scoring.js` | Daily load, burnout alert, campus intensity, best-date ranking |
-| `js/app.js` | Student and host views |
+| `js/app.js` | Student and host views, syllabus upload |
+| `samples/33-141_syllabus.txt` | Sample syllabus for the upload demo |
+
+## Missing exam dates
+
+Syllabi often have exam dates that never make it into Canvas. Any student whose enrollment Canvas confirms can upload the syllabus (or type the date). The app reads the exam date from the text, the student confirms it, and it's added for everyone in that course and to campus intensity. Students not enrolled in a course can't add dates for it. The demo reads text files; PDF parsing is a next step.
 
 ## How the scores work
 

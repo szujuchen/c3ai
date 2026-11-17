@@ -110,15 +110,6 @@ window.MOCK = {
       "effort_h": 4
     },
     {
-      "id": 5203,
-      "course_id": 103,
-      "name": "Final Exam",
-      "due_at": "2026-12-15T10:00:00-05:00",
-      "points_possible": 200,
-      "type": "final",
-      "effort_h": 12
-    },
-    {
       "id": 5301,
       "course_id": 104,
       "name": "Essay 3 draft",

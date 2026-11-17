@@ -16,6 +16,8 @@
     gcal: false,
     selectedDay: null,
     done: {},
+    syllabusExams: [],
+    pending: {},
     hostType: 'recruiting',
     audience: 'all',
     hosted: [],
@@ -31,6 +33,8 @@
     return `${((h + 11) % 12) + 1}${m === '00' ? '' : ':' + m} ${h < 12 ? 'AM' : 'PM'}`;
   };
   const course = (id) => M.canvasCourses.find((c) => c.id === id);
+  const allAssignments = () => M.canvasAssignments.concat(state.syllabusExams);
+  const MONTHS_FULL = ['january','february','march','april','may','june','july','august','september','october','november','december'];
   const allEvents = () => M.gcalEvents.items.concat(state.hosted);
 
   function toast(msg) {
@@ -42,7 +46,7 @@
   // ---------- Student ----------
   function studentData() {
     const st = M.students.find((s) => s.id === state.studentId);
-    const assignments = state.canvas ? M.canvasAssignments : [];
+    const assignments = state.canvas ? allAssignments() : [];
     const events = state.gcal ? allEvents() : [];
     const load = S.dailyLoad(st, assignments, events, MONTH_START, MONTH_DAYS);
     const alert = S.burnoutAlert(load, st.daily_cap_h);
@@ -80,6 +84,7 @@
         <div class="row">${connect}</div>
       </div>
       ${renderAlert(st, assignments, events, load, alert)}
+      ${renderMissingExams(st)}
       <div class="grid-2">
         <div class="stack">
           <div class="card">
@@ -130,6 +135,94 @@
       <ul>${fixes.map((f) => `<li>${f}</li>`).join('')}</ul></div>`;
   }
 
+  // ---------- Missing exam dates (syllabus upload) ----------
+  function missingExamCourses(st) {
+    if (!state.canvas) return [];
+    return st.course_ids.filter((cid) => !allAssignments().some((a) => a.course_id === cid && (a.type === 'final' || a.type === 'midterm')));
+  }
+
+  // Find "Final Exam ... December 15 ... 10:00 AM" in syllabus text.
+  function parseExam(text) {
+    const re = /(final|midterm)[^\n]{0,80}?\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:,?\s*(\d{4}))?([^\n]{0,30})/i;
+    const m = text.match(re);
+    if (!m) return null;
+    const mon = MONTHS_FULL.findIndex((x) => x.startsWith(m[2].toLowerCase())) + 1;
+    const year = m[4] || '2026';
+    const t = (m[5] || '').match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+    let hh = 9, mm = '00';
+    if (t) { hh = (Number(t[1]) % 12) + (t[3].toLowerCase() === 'pm' ? 12 : 0); mm = t[2] || '00'; }
+    return {
+      type: m[1].toLowerCase(),
+      date: `${year}-${String(mon).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`,
+      time: `${String(hh).padStart(2, '0')}:${mm}`,
+      quote: m[0].trim(),
+    };
+  }
+
+  function renderMissingExams(st) {
+    const added = state.syllabusExams.filter((a) => st.course_ids.includes(a.course_id));
+    const missing = missingExamCourses(st);
+    if (!missing.length && !added.length) return '';
+    const rows = missing.map((cid) => {
+      const c = course(cid);
+      const p = state.pending[cid];
+      const form = p ? `
+        <div class="exam-form">
+          <p class="sub">${p.quote ? `Found in <b>${esc(p.file)}</b>: “${esc(p.quote)}”` : p.file ? `Couldn't find an exam date in <b>${esc(p.file)}</b>. Enter it below.` : 'Enter the exam date from your syllabus.'}</p>
+          <div class="row" style="margin-top:8px">
+            <select data-f="type" data-c="${cid}"><option value="final" ${p.type !== 'midterm' ? 'selected' : ''}>Final exam</option><option value="midterm" ${p.type === 'midterm' ? 'selected' : ''}>Midterm</option></select>
+            <input type="date" data-f="date" data-c="${cid}" value="${p.date || ''}" />
+            <input type="time" data-f="time" data-c="${cid}" value="${p.time || '09:00'}" />
+            <button class="btn primary" data-confirm="${cid}">Add for the class</button>
+          </div>
+        </div>` : '';
+      return `<li class="miss"><div class="row spread" style="width:100%">
+          <span><b>${esc(c.course_code)}</b> ${esc(c.name)} <span class="meta">· no exam date in Canvas</span></span>
+          <span class="row"><label class="btn">Upload syllabus<input type="file" accept=".txt,.pdf,.md,.html" data-up="${cid}" hidden /></label>
+          <button class="btn" data-manual="${cid}">Enter date</button></span>
+        </div>${form}</li>`;
+    }).join('');
+    const done = added.map((a) => `<li><span>✓ <b>${esc(course(a.course_id).course_code)}</b> ${esc(a.name)}, ${fmt(a.due_at.slice(0, 10))} ${time(a.due_at)}</span>
+      <span class="meta">from syllabus · ${esc(a.added_by)} · shared with all ${M.students.filter((s) => s.course_ids.includes(a.course_id)).length} students in the course</span></li>`).join('');
+    return `<div class="card" style="margin-top:20px">
+      <h2>${missing.length ? 'Exam dates missing from Canvas' : 'Exam dates added from syllabi'}</h2>
+      <p class="sub">Canvas confirms you're enrolled, so an exam date you add is shared with everyone in that course and counts toward campus intensity.</p>
+      <ul class="list" style="margin-top:8px">${rows}${done}</ul></div>`;
+  }
+
+  function bindMissing(st) {
+    $app.querySelectorAll('[data-up]').forEach((inp) => (inp.onchange = () => {
+      const f = inp.files[0]; if (!f) return;
+      const cid = Number(inp.dataset.up);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const found = parseExam(String(reader.result));
+        state.pending[cid] = Object.assign({ file: f.name }, found || {});
+        render();
+      };
+      reader.readAsText(f);
+    }));
+    $app.querySelectorAll('[data-manual]').forEach((b) => (b.onclick = () => { state.pending[Number(b.dataset.manual)] = {}; render(); }));
+    $app.querySelectorAll('[data-f]').forEach((el) => (el.onchange = () => { state.pending[Number(el.dataset.c)][el.dataset.f] = el.value; }));
+    $app.querySelectorAll('[data-confirm]').forEach((b) => (b.onclick = () => {
+      const cid = Number(b.dataset.confirm);
+      const p = state.pending[cid];
+      const type = p.type || 'final';
+      if (!p.date) { toast('Pick a date first'); return; }
+      if (!st.course_ids.includes(cid)) { toast('Only enrolled students can add exam dates'); return; }
+      state.syllabusExams.push({
+        id: 9000 + state.syllabusExams.length, course_id: cid, name: type === 'final' ? 'Final Exam' : 'Midterm',
+        due_at: `${p.date}T${p.time || '09:00'}:00-05:00`, points_possible: 200, type, effort_h: type === 'final' ? 12 : 8,
+        source: 'syllabus', added_by: st.name,
+      });
+      delete state.pending[cid];
+      const n = M.students.filter((s) => s.course_ids.includes(cid)).length;
+      state.selectedDay = null;
+      toast(`Exam added for all ${n} students in ${course(cid).course_code}`);
+      render();
+    }));
+  }
+
   function renderCalendar(keys, cell) {
     const lead = (dow(keys[0]) + 6) % 7; // Monday first
     const head = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => `<div class="dow">${d}</div>`).join('');
@@ -150,7 +243,7 @@
     const k = state.selectedDay;
     const it = S.dayItems(st, assignments, events, k);
     const lv = S.level(load[k], st.daily_cap_h);
-    const due = it.due.map((a) => `<li><span>${esc(course(a.course_id).course_code)} ${esc(a.name)}</span><span class="meta">${time(a.due_at)}</span></li>`).join('');
+    const due = it.due.map((a) => `<li><span>${esc(course(a.course_id).course_code)} ${esc(a.name)}${a.source === 'syllabus' ? ' <span class="meta">(syllabus)</span>' : ''}</span><span class="meta">${time(a.due_at)}</span></li>`).join('');
     const work = it.work
       .sort((a, b) => b.hours - a.hours)
       .map((w) => {
@@ -189,6 +282,8 @@
   }
 
   function bindStudent() {
+    const stNow = M.students.find((s) => s.id === state.studentId);
+    bindMissing(stNow);
     document.getElementById('student').onchange = (e) => { state.studentId = e.target.value; state.selectedDay = null; render(); };
     const cv = document.getElementById('c-canvas');
     if (cv && !state.canvas) cv.onclick = () => { state.canvas = true; state.selectedDay = null; toast(`Synced ${M.canvasAssignments.length} assignments from Canvas`); render(); };
@@ -201,7 +296,7 @@
   // ---------- Host ----------
   function renderHost() {
     const audience = M.students.filter((s) => state.audience === 'all' || s.major === state.audience);
-    const intensity = S.campusIntensity(audience, M.canvasAssignments, allEvents(), MONTH_START, MONTH_DAYS);
+    const intensity = S.campusIntensity(audience, allAssignments(), allEvents(), MONTH_START, MONTH_DAYS);
     const picks = S.bestDates(intensity, state.hostType, { from: MONTH_START, to: TERM_END, hosted: allEvents() });
     const rank = {}; picks.forEach((p, i) => (rank[p.date] = i + 1));
     const keys = Object.keys(intensity);
